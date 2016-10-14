@@ -14,6 +14,7 @@
 // limitations under the License.
 // </copyright>
 //
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -36,11 +37,16 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
     [DisplayName( "Last Week's Data Dashboard Widget" )]
     [Category( "Bricks and Mortar Studio > Dashboard" )]
     [Description( "Dashboard Widget from Liquid using YTD metric values" )]
-    [EntityField( "Series Partition", "Select the series partition entity (Campus, Group, etc) to be used to limit the metric values for the selected metrics.", "Either select a specific {0} or leave {0} blank to get it from the page context.", Key = "Entity", Order = 3 )]
-    [MetricCategoriesField( "Metric", "Select the metric(s) to be made available to liquid", Key = "MetricCategories", Order = 4 )]
-    [BooleanField( "Round Values", "Round Y values to the nearest whole number. For example, display 25.00 as 25.", true, Order = 5 )]
-    [CodeEditorField( "Liquid Template", "The text (or html) to display as a dashboard widget", CodeEditorMode.Lava, CodeEditorTheme.Rock, 200, Order = 6, DefaultValue =
-@"
+    [EntityField( "Series Partition",
+         "Select the series partition entity (Campus, Group, etc) to be used to limit the metric values for the selected metrics.",
+         "Either select a specific {0} or leave {0} blank to get it from the page context.", Key = "Entity", Order = 3 )]
+    [MetricCategoriesField( "Metric", "Select the metric(s) to be made available to liquid", Key = "MetricCategories",
+         Order = 4 )]
+    [BooleanField( "Round Values", "Round Y values to the nearest whole number. For example, display 25.00 as 25.", true,
+         Order = 5 )]
+    [CodeEditorField( "Liquid Template", "The text (or html) to display as a dashboard widget", CodeEditorMode.Lava,
+         CodeEditorTheme.Rock, 200, Order = 6, DefaultValue =
+             @"
 {% for metric in Metrics %}
     <h1>{{ metric.Title }}</h1>
     <h4>{{ metric.Subtitle }}</h4>
@@ -56,32 +62,18 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
     </div>
 {% endfor %}
 " )]
-
     [BooleanField( "Enable Debug", "Outputs the object graph to help create your liquid syntax.", false, Order = 7 )]
     public partial class LastWeekDashboardWidget : DashboardWidget
     {
-
-
-
         public EntityTypeCache EntityType
         {
             get
             {
-                string[] entityValues = ( GetAttributeValue( "Entity" ) ?? "" ).Split( '|' );
-                if ( entityValues.Length != 2 || string.IsNullOrEmpty( entityValues[1] ) )
-                {
+                var entityValues = ( GetAttributeValue( "Entity" ) ?? "" ).Split( '|' );
+                if ( (entityValues.Length != 2) || string.IsNullOrEmpty( entityValues[0] ) )
                     return null;
-
-                }
                 var entityType = EntityTypeCache.Read( entityValues[0].AsGuid() );
-                if ( entityType == null )
-                {
-                    return null;
-                }
-                else
-                {
-                    return entityType;
-                }
+                return entityType ?? null;
             }
         }
 
@@ -89,23 +81,19 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
         {
             get
             {
-                string[] entityValues = ( GetAttributeValue( "Entity" ) ?? "" ).Split( '|' );
-                if ( entityValues.Length != 2 || string.IsNullOrEmpty( entityValues[1] ) )
-                {
-                    return null;
+                //entityValues[0] = EntityTypeGuid, [1] = Id for the given Entity
 
-                }
+                var entityValues = ( GetAttributeValue( "Entity" ) ?? "" ).Split( '|' );
+                if ( (entityValues.Length != 2) || string.IsNullOrEmpty( entityValues[0] ) )
+                    return null;
                 var entityType = EntityTypeCache.Read( entityValues[0].AsGuid() );
-                if ( entityType == null )
-                {
-                    return null;
-                }
-                else
-                {
+                if ( !string.IsNullOrWhiteSpace( entityValues[1] ) )
                     return entityValues[1].AsIntegerOrNull();
-                }
+                var contextEntity = RockPage.GetCurrentContext( entityType );
+                if ( contextEntity != null )
+                    return contextEntity.Id;
+                return null;
             }
-
         }
 
 
@@ -113,84 +101,81 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
         /// Raises the <see cref="E:System.Web.UI.Control.Load" /> event.
         /// </summary>
         /// <param name="e">The <see cref="T:System.EventArgs" /> object that contains the event data.</param>
-        protected override void OnLoad( System.EventArgs e )
+        protected override void OnLoad( EventArgs e )
         {
             base.OnLoad( e );
-            pnlDashboardTitle.Visible = !string.IsNullOrEmpty( this.Title );
-            pnlDashboardSubtitle.Visible = !string.IsNullOrEmpty( this.Subtitle );
-            lDashboardTitle.Text = this.Title;
-            lDashboardSubtitle.Text = this.Subtitle;
+            pnlDashboardTitle.Visible = !string.IsNullOrEmpty( Title );
+            pnlDashboardSubtitle.Visible = !string.IsNullOrEmpty( Subtitle );
+            lDashboardTitle.Text = Title;
+            lDashboardSubtitle.Text = Subtitle;
             lHtml.Text = GetHtml();
         }
 
         public string GetHtml()
         {
-            RockContext rockContext = new RockContext();
+            var rockContext = new RockContext();
 
-            string lavaTemplate = GetAttributeValue( "LiquidTemplate" );
+            var lavaTemplate = GetAttributeValue( "LiquidTemplate" );
 
-            var metricCategoryPairList = Rock.Attribute.MetricCategoriesFieldAttribute.GetValueAsGuidPairs( GetAttributeValue( "MetricCategories" ) );
+            var metricCategoryPairList =
+                MetricCategoriesFieldAttribute.GetValueAsGuidPairs( GetAttributeValue( "MetricCategories" ) );
 
             var metricGuids = metricCategoryPairList.Select( a => a.MetricGuid ).ToList();
 
-            bool roundYValues = GetAttributeValue( "RoundValues" ).AsBooleanOrNull() ?? true;
 
-            MetricService metricService = new MetricService( rockContext );
+            var metricService = new MetricService( rockContext );
             var metrics = metricService.GetByGuids( metricGuids );
-            List<object> metricsData = new List<object>();
+            var metricsData = new List<object>();
 
-            if ( metrics.Count() == 0 )
-            {
+            if ( !metrics.Any() )
                 return @"<div class='alert alert-warning'> 
 								Please select a metric in the block settings.
 							</div>";
-            }
 
-            MetricValueService metricValueService = new MetricValueService( rockContext );
-            
-            DateTime currentDateTime = RockDateTime.Now;
-            DateTime overAWeekAgo = RockDateTime.Now.AddDays( -8 );
+            var metricValueService = new MetricValueService( rockContext );
+
+            var overAWeekAgo = RockDateTime.Now.AddDays( -8 );
 
             foreach ( var metric in metrics )
             {
-                var metricSummary = JsonConvert.DeserializeObject( metric.ToJson(), typeof( MetricSummary ) ) as MetricSummary;
+                var metricSummary =
+                    JsonConvert.DeserializeObject( metric.ToJson(), typeof( MetricSummary ) ) as MetricSummary;
                 var qryMeasureValues = metricValueService.Queryable()
-                    .Where( a => a.MetricId == metric.Id && a.MetricValueType == MetricValueType.Measure && a.MetricValueDateTime > overAWeekAgo );
+                    .Where(
+                        a =>
+                            (a.MetricId == metric.Id) && (a.MetricValueType == MetricValueType.Measure) &&
+                            (a.MetricValueDateTime > overAWeekAgo) );
 
                 //// if an entityTypeId/EntityId filter was specified, and the entityTypeId is the same as the metrics.EntityTypeId, filter the values to the specified entityId
                 //// Note: if a Metric or it's Metric Value doesn't have a context, include it regardless of Context setting
-                if ( EntityId.HasValue && ( metric.EntityTypeId == EntityId || metric.EntityTypeId == null ) )
-                {
-                    if ( EntityId.HasValue )
-                    {
-                        qryMeasureValues = qryMeasureValues.Where( a => a.EntityId == EntityId.Value || a.EntityId == null );
-                    }
-                }
+                var entityId = EntityId;
+
+                if ( entityId.HasValue && ( metric.EntityTypeId == EntityType.Id ) )
+                    qryMeasureValues = qryMeasureValues.Where( a => a.EntityId == entityId.Value );
 
                 var lastMetricValue = qryMeasureValues.OrderByDescending( a => a.MetricValueDateTime ).FirstOrDefault();
                 if ( lastMetricValue != null )
                 {
-                    metricSummary.LastValueDate = lastMetricValue.MetricValueDateTime.HasValue ? lastMetricValue.MetricValueDateTime.Value.Date : DateTime.MinValue;
-                    metricSummary.LastValue = lastMetricValue.YValue.HasValue ? lastMetricValue.YValue.Value : ( decimal? ) null;
-                }               
+                    metricSummary.LastValueDate = lastMetricValue.MetricValueDateTime.HasValue
+                        ? lastMetricValue.MetricValueDateTime.Value.Date
+                        : DateTime.MinValue;
+                    metricSummary.LastValue = lastMetricValue.YValue;
+                }
 
                 metricsData.Add( metricSummary.ToLiquid() );
             }
 
-            Rock.Lava.CommonMergeFieldsOptions lavaOptions = new Rock.Lava.CommonMergeFieldsOptions();
-            Dictionary<string, object> mergeValues = Rock.Lava.LavaHelper.GetCommonMergeFields( null, null, lavaOptions );
+            var lavaOptions = new Rock.Lava.CommonMergeFieldsOptions();
+            var mergeValues = Rock.Lava.LavaHelper.GetCommonMergeFields( null, null, lavaOptions );
             mergeValues.Add( "Metrics", metricsData );
 
-            string resultHtml = lavaTemplate.ResolveMergeFields( mergeValues );
+            var resultHtml = lavaTemplate.ResolveMergeFields( mergeValues );
 
             // show liquid help for debug
             if ( GetAttributeValue( "EnableDebug" ).AsBoolean() )
-            {
                 resultHtml += mergeValues.lavaDebugInfo();
-            }
             return resultHtml;
         }
-
     }
 
     public class MetricSummary : Metric
