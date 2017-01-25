@@ -115,7 +115,7 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
         {
             var rockContext = new RockContext();
 
-            var lavaTemplate = GetAttributeValue( "LiquidTemplate" );
+            string lavaTemplate = GetAttributeValue( "LiquidTemplate" );
 
             var metricCategoryPairList =
                 MetricCategoriesFieldAttribute.GetValueAsGuidPairs( GetAttributeValue( "MetricCategories" ) );
@@ -138,8 +138,7 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
 
             foreach ( var metric in metrics )
             {
-                var metricSummary =
-                    JsonConvert.DeserializeObject( metric.ToJson(), typeof( MetricSummary ) ) as MetricSummary;
+                var metricSummary = JsonConvert.DeserializeObject( metric.ToJson(), typeof( MetricSummary ) ) as MetricSummary;
                 var qryMeasureValues = metricValueService.Queryable()
                     .Where(
                         a =>
@@ -150,8 +149,8 @@ namespace Plugins.com_bricksandmortarstudio.Reporting
                 //// Note: if a Metric or it's Metric Value doesn't have a context, include it regardless of Context setting
                 var entityId = EntityId;
 
-                if ( entityId.HasValue && ( metric.EntityTypeId == EntityType.Id ) )
-                    qryMeasureValues = qryMeasureValues.Where( a => a.EntityId == entityId.Value );
+                if ( entityId.HasValue && metric.MetricPartitions.Any( mp => mp.EntityTypeId == EntityType.Id) )
+                    qryMeasureValues = qryMeasureValues.Where( a => a.MetricValuePartitions.Any( mp => mp.EntityId.HasValue && mp.EntityId.Value == entityId.Value ) );
 
                 var lastMetricValue = qryMeasureValues.OrderByDescending( a => a.MetricValueDateTime ).FirstOrDefault();
                 if ( lastMetricValue != null )
